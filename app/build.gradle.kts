@@ -69,4 +69,7 @@ dependencies {
 
     // Coil Compose
     implementation("io.coil-kt:coil-compose:2.4.0")
+    
+    // Coroutines for Google Play Services Tasks
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 }
