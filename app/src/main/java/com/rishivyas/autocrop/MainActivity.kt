@@ -740,7 +740,10 @@ fun CameraScreenPreview() {
 
 @Composable
 fun HistorySheetContent(images: List<File>, onClose: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier
+        .fillMaxWidth()
+        .padding(bottom = 16.dp)
+    ) {
         Text(
             text = "History",
             style = MaterialTheme.typography.titleLarge,
@@ -756,7 +759,7 @@ fun HistorySheetContent(images: List<File>, onClose: () -> Unit) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp)
+                    .fillMaxHeight(0.3f)
             ) {
                 items(images) { file ->
                     Card(
@@ -816,7 +819,6 @@ fun HistorySheetContent(images: List<File>, onClose: () -> Unit) {
             onClick = onClose,
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .padding(bottom = 16.dp)
         ) {
             Text("Close")
         }
