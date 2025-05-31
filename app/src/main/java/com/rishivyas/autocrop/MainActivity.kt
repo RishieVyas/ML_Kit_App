@@ -555,16 +555,14 @@ fun CameraScreen(
                     modifier = Modifier.padding(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(bottom = 8.dp)
                     ) {
                         IconButton(
                             onClick = { onSaveClick() },
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.align(Alignment.CenterStart).size(32.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Save,
@@ -574,12 +572,12 @@ fun CameraScreen(
                         Text(
                             text = "Cropped Image",
                             style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            modifier = Modifier.align(Alignment.Center),
                             maxLines = 1
                         )
                         IconButton(
                             onClick = onClearProcessedImage,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.align(Alignment.CenterEnd).size(32.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
