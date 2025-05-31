@@ -57,8 +57,10 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
-    // ML Kit Face Detection
-    implementation("com.google.android.gms:play-services-mlkit-face-detection:17.1.0")
+    // Face processor library
+    implementation(project(":faceprocessor"))
+    
+    // ML Kit Face Detection (needed for Face class references)
     implementation("com.google.mlkit:face-detection:16.1.5")
     
     // ML Kit Common

@@ -13,7 +13,9 @@ import com.rishivyas.autocrop.data.LoadSavedImages
 import com.rishivyas.autocrop.data.SavedImage
 import com.rishivyas.autocrop.data.StorageUtils
 import com.rishivyas.autocrop.utils.ImageUtils
+import com.rishivyas.faceprocessor.ProcessingResult
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * ViewModel for managing image processing and state
@@ -89,38 +91,24 @@ class MainViewModel : ViewModel() {
     fun processBitmapFromGallery(context: Context, bitmap: Bitmap) {
         viewModelScope.launch {
             try {
-                val faces = ImageUtils.detectFaces(bitmap)
-                
-                if (faces.isNotEmpty()) {
-                    val face = faces[0]
-                    val boundingBox = face.boundingBox
-                    
-                    // Calculate crop area
-                    val left = boundingBox.left.coerceIn(0, bitmap.width)
-                    val top = boundingBox.top.coerceIn(0, bitmap.height)
-                    val padding = (boundingBox.width() * 0.2f).toInt()
-                    val paddedLeft = (left - padding).coerceIn(0, bitmap.width)
-                    val paddedTop = (top - padding).coerceIn(0, bitmap.height)
-                    
-                    // Crop the face
-                    val croppedBitmap = ImageUtils.cropFace(bitmap, face)
-                    croppedFace.value = croppedBitmap
-                    
-                    // Draw contours if we have a cropped face
-                    if (croppedBitmap != null) {
-                        val faceWithContours = ImageUtils.drawEyeContoursOnBitmap(
-                            croppedBitmap, face, paddedLeft, paddedTop
-                        )
-                        faceWithEyeContours.value = faceWithContours
+                // Use the new unified processing method from our library
+                when (val result = ImageUtils.processBitmap(bitmap)) {
+                    is ProcessingResult.Success -> {
+                        // Extract all the needed information from the result
+                        detectedFaces.value = result.detectedFaces
+                        croppedFace.value = result.croppedFaceBitmap
+                        faceWithEyeContours.value = result.resultBitmap
                         Toast.makeText(context, "Face detected, cropped, and contours drawn from gallery image", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Failed to crop face from gallery image", Toast.LENGTH_SHORT).show()
                     }
-                } else {
-                    Toast.makeText(context, "No face detected in gallery image", Toast.LENGTH_SHORT).show()
+                    is ProcessingResult.NoFaceDetected -> {
+                        Toast.makeText(context, "No face detected in gallery image", Toast.LENGTH_SHORT).show()
+                    }
+                    is ProcessingResult.Error -> {
+                        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "Face detection failed for gallery image", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Face detection failed for gallery image: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -130,35 +118,32 @@ class MainViewModel : ViewModel() {
      */
     fun cropDetectedFace(context: Context) {
         val bitmap = capturedImage.value
-        val faces = detectedFaces.value
         
-        if (bitmap != null && faces.isNotEmpty()) {
-            val face = faces[0]
-            val boundingBox = face.boundingBox
-            
-            // Calculate crop area
-            val left = boundingBox.left.coerceIn(0, bitmap.width)
-            val top = boundingBox.top.coerceIn(0, bitmap.height)
-            val padding = (boundingBox.width() * 0.2f).toInt()
-            val paddedLeft = (left - padding).coerceIn(0, bitmap.width)
-            val paddedTop = (top - padding).coerceIn(0, bitmap.height)
-            
-            // Crop the face
-            val croppedBitmap = ImageUtils.cropFace(bitmap, face)
-            croppedFace.value = croppedBitmap
-            
-            // Draw contours if we have a cropped face
-            if (croppedBitmap != null) {
-                val faceWithContours = ImageUtils.drawEyeContoursOnBitmap(
-                    croppedBitmap, face, paddedLeft, paddedTop
-                )
-                faceWithEyeContours.value = faceWithContours
-                Toast.makeText(context, "Face cropped and contours drawn", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "Failed to crop face", Toast.LENGTH_SHORT).show()
+        if (bitmap != null) {
+            viewModelScope.launch {
+                try {
+                    // Use the new unified processing method from our library
+                    when (val result = ImageUtils.processBitmap(bitmap)) {
+                        is ProcessingResult.Success -> {
+                            // Extract all the needed information from the result
+                            detectedFaces.value = result.detectedFaces
+                            croppedFace.value = result.croppedFaceBitmap
+                            faceWithEyeContours.value = result.resultBitmap
+                            Toast.makeText(context, "Face cropped and contours drawn", Toast.LENGTH_SHORT).show()
+                        }
+                        is ProcessingResult.NoFaceDetected -> {
+                            Toast.makeText(context, "No face detected to crop", Toast.LENGTH_SHORT).show()
+                        }
+                        is ProcessingResult.Error -> {
+                            Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Face processing failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         } else {
-            Toast.makeText(context, "No face detected to crop", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "No image captured", Toast.LENGTH_SHORT).show()
         }
     }
     

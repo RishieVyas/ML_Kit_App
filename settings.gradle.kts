@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Auto Crop"
 include(":app")
+include(":faceprocessor")
