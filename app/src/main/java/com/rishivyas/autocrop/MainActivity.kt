@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
                         onPickGalleryClick = { clearAllImageStates(); openGallery() },
                         onClearCapturedImage = { clearCapturedImageStates() },
                         onClearProcessedImage = { clearProcessedImageStates() },
+                        onViewHistoryClick = { viewHistory() },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -420,6 +421,11 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "No face detected to crop", Toast.LENGTH_SHORT).show()
         }
     }
+
+    private fun viewHistory() {
+        // Implementation of viewHistory function
+        Toast.makeText(this, "View History function not implemented", Toast.LENGTH_SHORT).show()
+    }
 }
 
 @Composable
@@ -434,6 +440,7 @@ fun CameraScreen(
     onPickGalleryClick: () -> Unit,
     onClearCapturedImage: () -> Unit,
     onClearProcessedImage: () -> Unit,
+    onViewHistoryClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -443,38 +450,55 @@ fun CameraScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Action buttons
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = onCaptureClick,
-                modifier = Modifier.weight(1f)
+        // Button grid logic
+        val showCrop = detectedFaces.isNotEmpty()
+        if (showCrop) {
+            // 2x2 grid when Crop Face is available
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Take Photo")
-            }
-
-            if (detectedFaces.isNotEmpty()) {
+                Button(
+                    onClick = onCaptureClick,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Take Photo") }
                 Button(
                     onClick = onCropClick,
                     modifier = Modifier.weight(1f)
-                ) {
-                    Text("Crop Face")
-                }
+                ) { Text("Crop Face") }
             }
-
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Button(
+                    onClick = onPickGalleryClick,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Pick from Gallery") }
+                Button(
+                    onClick = onViewHistoryClick,
+                    modifier = Modifier.weight(1f)
+                ) { Text("View History") }
+            }
+        } else {
+            // Stack three buttons vertically when Crop Face is not available
+            Button(
+                onClick = onCaptureClick,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Take Photo") }
+            Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = onPickGalleryClick,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Pick from Gallery")
-            }
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Pick from Gallery") }
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onViewHistoryClick,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("View History") }
         }
-
-        // Original image with face detection
+        // Image cards below the grid
         capturedImage?.let { bitmap ->
             Card(
                 modifier = Modifier
@@ -495,7 +519,7 @@ fun CameraScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(300.dp)
+                                .height(200.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
                         ) {
@@ -542,8 +566,6 @@ fun CameraScreen(
                 }
             }
         }
-
-        // Processed face with eye contours
         faceWithEyeContours?.let { face ->
             Card(
                 modifier = Modifier
@@ -588,7 +610,7 @@ fun CameraScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(300.dp)
+                            .height(200.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
                             .background(Color.White)
@@ -603,8 +625,6 @@ fun CameraScreen(
                 }
             }
         }
-
-        // Original cropped face (if no contours drawn)
         if (faceWithEyeContours == null) {
             croppedFace?.let { face ->
                 Card(
@@ -625,7 +645,7 @@ fun CameraScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(300.dp)
+                                .height(200.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
                                 .background(Color.White)
@@ -658,7 +678,8 @@ fun CameraScreenPreview() {
             onSaveClick = {},
             onPickGalleryClick = {},
             onClearCapturedImage = {},
-            onClearProcessedImage = {}
+            onClearProcessedImage = {},
+            onViewHistoryClick = {}
         )
     }
 }
