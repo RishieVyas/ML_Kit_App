@@ -150,6 +150,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             AutoCropTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    val noImages = _capturedImage.value == null && _croppedFace.value == null && _faceWithEyeContours.value == null
                     CameraScreen(
                         capturedImage = _capturedImage.value,
                         detectedFaces = _detectedFaces.value,
@@ -162,7 +163,7 @@ class MainActivity : ComponentActivity() {
                         onClearCapturedImage = { clearCapturedImageStates() },
                         onClearProcessedImage = { clearProcessedImageStates() },
                         onViewHistoryClick = { viewHistory() },
-                        modifier = Modifier.padding(innerPadding)
+                        modifier = if (noImages) Modifier.fillMaxSize() else Modifier.padding(innerPadding)
                     )
                 }
             }
@@ -443,17 +444,41 @@ fun CameraScreen(
     onViewHistoryClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Button grid logic
-        val showCrop = detectedFaces.isNotEmpty()
-        if (showCrop) {
-            // 2x2 grid when Crop Face is available
+    val noImages = capturedImage == null && croppedFace == null && faceWithEyeContours == null
+    if (noImages) {
+        // Center three buttons vertically in a column
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Button(
+                    onClick = onCaptureClick,
+                    modifier = Modifier.fillMaxWidth(0.7f)
+                ) { Text("Take Photo") }
+                Button(
+                    onClick = onPickGalleryClick,
+                    modifier = Modifier.fillMaxWidth(0.7f)
+                ) { Text("Pick from Gallery") }
+                Button(
+                    onClick = onViewHistoryClick,
+                    modifier = Modifier.fillMaxWidth(0.7f)
+                ) { Text("View History") }
+            }
+        }
+    } else {
+        // Buttons at top, images below
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            val showCrop = detectedFaces.isNotEmpty()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -462,12 +487,16 @@ fun CameraScreen(
                     onClick = onCaptureClick,
                     modifier = Modifier.weight(1f)
                 ) { Text("Take Photo") }
-                Button(
-                    onClick = onCropClick,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Crop Face") }
+                if (showCrop) {
+                    Button(
+                        onClick = onCropClick,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Crop Face") }
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -481,152 +510,75 @@ fun CameraScreen(
                     modifier = Modifier.weight(1f)
                 ) { Text("View History") }
             }
-        } else {
-            // Stack three buttons vertically when Crop Face is not available
-            Button(
-                onClick = onCaptureClick,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Take Photo") }
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = onPickGalleryClick,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Pick from Gallery") }
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = onViewHistoryClick,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("View History") }
-        }
-        // Image cards below the grid
-        capturedImage?.let { bitmap ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box {
-                    Column(
-                        modifier = Modifier.padding(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Original Image with Face Detection",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+            // Image cards below the grid
+            capturedImage?.let { bitmap ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Box {
+                        Column(
+                            modifier = Modifier.padding(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Captured Image",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Fit
+                            Text(
+                                text = "Original Image with Face Detection",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(bottom = 8.dp)
                             )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                            ) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "Captured Image",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
 
-                            // Face detection overlay
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val scaleX = size.width / bitmap.width.toFloat()
-                                val scaleY = size.height / bitmap.height.toFloat()
+                                // Face detection overlay
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val scaleX = size.width / bitmap.width.toFloat()
+                                    val scaleY = size.height / bitmap.height.toFloat()
 
-                                detectedFaces.forEach { face ->
-                                    // Draw bounding box
-                                    val boundingBox = face.boundingBox
-                                    drawRect(
-                                        color = Color.Green,
-                                        topLeft = Offset(
-                                            boundingBox.left * scaleX,
-                                            boundingBox.top * scaleY
-                                        ),
-                                        size = androidx.compose.ui.geometry.Size(
-                                            boundingBox.width() * scaleX,
-                                            boundingBox.height() * scaleY
-                                        ),
-                                        style = Stroke(width = 2f)
-                                    )
+                                    detectedFaces.forEach { face ->
+                                        // Draw bounding box
+                                        val boundingBox = face.boundingBox
+                                        drawRect(
+                                            color = Color.Green,
+                                            topLeft = Offset(
+                                                boundingBox.left * scaleX,
+                                                boundingBox.top * scaleY
+                                            ),
+                                            size = androidx.compose.ui.geometry.Size(
+                                                boundingBox.width() * scaleX,
+                                                boundingBox.height() * scaleY
+                                            ),
+                                            style = Stroke(width = 2f)
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    IconButton(
-                        onClick = onClearCapturedImage,
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Clear Image"
-                        )
-                    }
-                }
-            }
-        }
-        faceWithEyeContours?.let { face ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp)
-                    ) {
                         IconButton(
-                            onClick = { onSaveClick() },
-                            modifier = Modifier.align(Alignment.CenterStart).size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Save,
-                                contentDescription = "Save Image"
-                            )
-                        }
-                        Text(
-                            text = "Cropped Image",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.align(Alignment.Center),
-                            maxLines = 1
-                        )
-                        IconButton(
-                            onClick = onClearProcessedImage,
-                            modifier = Modifier.align(Alignment.CenterEnd).size(32.dp)
+                            onClick = onClearCapturedImage,
+                            modifier = Modifier.align(Alignment.TopEnd)
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
-                                contentDescription = "Clear Processed Image"
+                                contentDescription = "Clear Image"
                             )
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
-                            .background(Color.White)
-                    ) {
-                        Image(
-                            bitmap = face.asImageBitmap(),
-                            contentDescription = "Processed Face",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
-                        )
-                    }
                 }
             }
-        }
-        if (faceWithEyeContours == null) {
-            croppedFace?.let { face ->
+            faceWithEyeContours?.let { face ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -637,11 +589,36 @@ fun CameraScreen(
                         modifier = Modifier.padding(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(
-                            text = "Cropped Face",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        ) {
+                            IconButton(
+                                onClick = { onSaveClick() },
+                                modifier = Modifier.align(Alignment.CenterStart).size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Save,
+                                    contentDescription = "Save Image"
+                                )
+                            }
+                            Text(
+                                text = "Cropped Image",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.align(Alignment.Center),
+                                maxLines = 1
+                            )
+                            IconButton(
+                                onClick = onClearProcessedImage,
+                                modifier = Modifier.align(Alignment.CenterEnd).size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Clear Processed Image"
+                                )
+                            }
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -652,10 +629,46 @@ fun CameraScreen(
                         ) {
                             Image(
                                 bitmap = face.asImageBitmap(),
-                                contentDescription = "Cropped Face",
+                                contentDescription = "Processed Face",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Fit
                             )
+                        }
+                    }
+                }
+            }
+            if (faceWithEyeContours == null) {
+                croppedFace?.let { face ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Cropped Face",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                                    .background(Color.White)
+                            ) {
+                                Image(
+                                    bitmap = face.asImageBitmap(),
+                                    contentDescription = "Cropped Face",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
                         }
                     }
                 }
