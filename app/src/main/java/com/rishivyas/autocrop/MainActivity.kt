@@ -59,6 +59,7 @@ import androidx.compose.material3.IconButton
 import android.app.Activity
 import androidx.activity.result.ActivityResultLauncher
 import android.media.MediaScannerConnection
+import androidx.compose.material.icons.filled.Close
 
 class MainActivity : ComponentActivity() {
     private var currentPhotoPath: String? = null
@@ -154,15 +155,36 @@ class MainActivity : ComponentActivity() {
                         detectedFaces = _detectedFaces.value,
                         croppedFace = _croppedFace.value,
                         faceWithEyeContours = _faceWithEyeContours.value,
-                        onCaptureClick = { checkCameraPermissionAndLaunch() },
+                        onCaptureClick = { clearAllImageStates(); checkCameraPermissionAndLaunch() },
                         onCropClick = { cropDetectedFace() },
                         onSaveClick = { _faceWithEyeContours.value?.let { saveProcessedImage(it) } },
-                        onPickGalleryClick = { openGallery() },
+                        onPickGalleryClick = { clearAllImageStates(); openGallery() },
+                        onClearCapturedImage = { clearCapturedImageStates() },
+                        onClearProcessedImage = { clearProcessedImageStates() },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
             }
         }
+    }
+
+    private fun clearAllImageStates() {
+        _capturedImage.value = null
+        _detectedFaces.value = emptyList()
+        _croppedFace.value = null
+        _faceWithEyeContours.value = null
+    }
+
+    private fun clearCapturedImageStates() {
+        _capturedImage.value = null
+        _detectedFaces.value = emptyList()
+        _croppedFace.value = null
+        _faceWithEyeContours.value = null
+    }
+
+    private fun clearProcessedImageStates() {
+        _faceWithEyeContours.value = null
+        _croppedFace.value = null
     }
 
     private fun checkCameraPermissionAndLaunch() {
@@ -410,6 +432,8 @@ fun CameraScreen(
     onCropClick: () -> Unit,
     onSaveClick: () -> Unit,
     onPickGalleryClick: () -> Unit,
+    onClearCapturedImage: () -> Unit,
+    onClearProcessedImage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -458,51 +482,62 @@ fun CameraScreen(
                     .padding(vertical = 8.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Original Image with Face Detection",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(300.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                Box {
+                    Column(
+                        modifier = Modifier.padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "Captured Image",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
+                        Text(
+                            text = "Original Image with Face Detection",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
                         )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                        ) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "Captured Image",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
 
-                        // Face detection overlay
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val scaleX = size.width / bitmap.width.toFloat()
-                            val scaleY = size.height / bitmap.height.toFloat()
+                            // Face detection overlay
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val scaleX = size.width / bitmap.width.toFloat()
+                                val scaleY = size.height / bitmap.height.toFloat()
 
-                            detectedFaces.forEach { face ->
-                                // Draw bounding box
-                                val boundingBox = face.boundingBox
-                                drawRect(
-                                    color = Color.Green,
-                                    topLeft = Offset(
-                                        boundingBox.left * scaleX,
-                                        boundingBox.top * scaleY
-                                    ),
-                                    size = androidx.compose.ui.geometry.Size(
-                                        boundingBox.width() * scaleX,
-                                        boundingBox.height() * scaleY
-                                    ),
-                                    style = Stroke(width = 2f)
-                                )
+                                detectedFaces.forEach { face ->
+                                    // Draw bounding box
+                                    val boundingBox = face.boundingBox
+                                    drawRect(
+                                        color = Color.Green,
+                                        topLeft = Offset(
+                                            boundingBox.left * scaleX,
+                                            boundingBox.top * scaleY
+                                        ),
+                                        size = androidx.compose.ui.geometry.Size(
+                                            boundingBox.width() * scaleX,
+                                            boundingBox.height() * scaleY
+                                        ),
+                                        style = Stroke(width = 2f)
+                                    )
+                                }
                             }
                         }
+                    }
+                    IconButton(
+                        onClick = onClearCapturedImage,
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Clear Image"
+                        )
                     }
                 }
             }
@@ -527,18 +562,28 @@ fun CameraScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Processed Face with Eye Contours",
-                            style = MaterialTheme.typography.titleMedium
-                        )
                         IconButton(
-                            onClick = { 
-                                onSaveClick()
-                            }
+                            onClick = { onSaveClick() },
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Save,
                                 contentDescription = "Save Image"
+                            )
+                        }
+                        Text(
+                            text = "Cropped Image",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            maxLines = 1
+                        )
+                        IconButton(
+                            onClick = onClearProcessedImage,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Clear Processed Image"
                             )
                         }
                     }
@@ -613,7 +658,9 @@ fun CameraScreenPreview() {
             onCaptureClick = {},
             onCropClick = {},
             onSaveClick = {},
-            onPickGalleryClick = {}
+            onPickGalleryClick = {},
+            onClearCapturedImage = {},
+            onClearProcessedImage = {}
         )
     }
 }
