@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.rishivyas.autocrop
 
 import android.Manifest
@@ -60,6 +62,15 @@ import android.app.Activity
 import androidx.activity.result.ActivityResultLauncher
 import android.media.MediaScannerConnection
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.sp
 
 class MainActivity : ComponentActivity() {
     private var currentPhotoPath: String? = null
@@ -71,6 +82,10 @@ class MainActivity : ComponentActivity() {
     private val _detectedFaces = mutableStateOf<List<Face>>(emptyList())
     private val _croppedFace = mutableStateOf<Bitmap?>(null)
     private val _faceWithEyeContours = mutableStateOf<Bitmap?>(null)
+
+    // State for ModalBottomSheet
+    private val _showHistorySheet = mutableStateOf(false)
+    private val _historyImages = mutableStateListOf<File>()
 
     // Configure Face Detector with specified options
     private val faceDetector by lazy {
@@ -149,22 +164,43 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AutoCropTheme {
+                val showSheet = _showHistorySheet.value
+                val historyImages = _historyImages.toList()
+                val sheetState = rememberModalBottomSheetState()
+                val coroutineScope = rememberCoroutineScope()
+
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     val noImages = _capturedImage.value == null && _croppedFace.value == null && _faceWithEyeContours.value == null
-                    CameraScreen(
-                        capturedImage = _capturedImage.value,
-                        detectedFaces = _detectedFaces.value,
-                        croppedFace = _croppedFace.value,
-                        faceWithEyeContours = _faceWithEyeContours.value,
-                        onCaptureClick = { clearAllImageStates(); checkCameraPermissionAndLaunch() },
-                        onCropClick = { cropDetectedFace() },
-                        onSaveClick = { _faceWithEyeContours.value?.let { saveProcessedImage(it) } },
-                        onPickGalleryClick = { clearAllImageStates(); openGallery() },
-                        onClearCapturedImage = { clearCapturedImageStates() },
-                        onClearProcessedImage = { clearProcessedImageStates() },
-                        onViewHistoryClick = { viewHistory() },
-                        modifier = if (noImages) Modifier.fillMaxSize() else Modifier.padding(innerPadding)
-                    )
+                    Box {
+                        CameraScreen(
+                            capturedImage = _capturedImage.value,
+                            detectedFaces = _detectedFaces.value,
+                            croppedFace = _croppedFace.value,
+                            faceWithEyeContours = _faceWithEyeContours.value,
+                            onCaptureClick = { clearAllImageStates(); checkCameraPermissionAndLaunch() },
+                            onCropClick = { cropDetectedFace() },
+                            onSaveClick = { _faceWithEyeContours.value?.let { saveProcessedImage(it) } },
+                            onPickGalleryClick = { clearAllImageStates(); openGallery() },
+                            onClearCapturedImage = { clearCapturedImageStates() },
+                            onClearProcessedImage = { clearProcessedImageStates() },
+                            onViewHistoryClick = {
+                                loadHistoryImages()
+                                _showHistorySheet.value = true
+                            },
+                            modifier = if (noImages) Modifier.fillMaxSize() else Modifier.padding(innerPadding)
+                        )
+                        if (showSheet) {
+                            ModalBottomSheet(
+                                onDismissRequest = { _showHistorySheet.value = false },
+                                sheetState = sheetState
+                            ) {
+                                HistorySheetContent(
+                                    images = historyImages,
+                                    onClose = { coroutineScope.launch { sheetState.hide(); _showHistorySheet.value = false } }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -423,9 +459,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun viewHistory() {
-        // Implementation of viewHistory function
-        Toast.makeText(this, "View History function not implemented", Toast.LENGTH_SHORT).show()
+    private fun loadHistoryImages() {
+        val dir = getExternalFilesDir("ProcessedFaces")
+        _historyImages.clear()
+        dir?.listFiles()?.sortedByDescending { it.lastModified() }?.forEach {
+            if (it.isFile && (it.extension.equals("jpg", true) || it.extension.equals("jpeg", true) || it.extension.equals("png", true))) {
+                _historyImages.add(it)
+            }
+        }
     }
 }
 
@@ -694,5 +735,90 @@ fun CameraScreenPreview() {
             onClearProcessedImage = {},
             onViewHistoryClick = {}
         )
+    }
+}
+
+@Composable
+fun HistorySheetContent(images: List<File>, onClose: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "History",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(16.dp)
+        )
+        if (images.isEmpty()) {
+            Text(
+                text = "No saved images.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(16.dp)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+            ) {
+                items(images) { file ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(8.dp)
+                        ) {
+                            val bitmap = remember(file) {
+                                BitmapFactory.decodeFile(file.absolutePath)?.let { bmp ->
+                                    Bitmap.createScaledBitmap(bmp, 48, 48, true).asImageBitmap()
+                                }
+                            }
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap,
+                                    contentDescription = "Thumbnail",
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Gray),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("?")
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = file.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(file.lastModified())),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onClose,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(bottom = 16.dp)
+        ) {
+            Text("Close")
+        }
     }
 }
