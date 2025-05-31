@@ -58,6 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import android.app.Activity
 import androidx.activity.result.ActivityResultLauncher
+import android.media.MediaScannerConnection
 
 class MainActivity : ComponentActivity() {
     private var currentPhotoPath: String? = null
@@ -155,7 +156,7 @@ class MainActivity : ComponentActivity() {
                         faceWithEyeContours = _faceWithEyeContours.value,
                         onCaptureClick = { checkCameraPermissionAndLaunch() },
                         onCropClick = { cropDetectedFace() },
-                        onSaveClick = { _faceWithEyeContours.value?.let { saveBitmapToInternalStorage(it) } },
+                        onSaveClick = { _faceWithEyeContours.value?.let { saveProcessedImage(it) } },
                         onPickGalleryClick = { openGallery() },
                         modifier = Modifier.padding(innerPadding)
                     )
@@ -324,18 +325,32 @@ class MainActivity : ComponentActivity() {
         return mutableBitmap
     }
 
-    private fun saveBitmapToInternalStorage(bitmap: Bitmap): String? {
-        return try {
+    private fun saveProcessedImage(bitmap: Bitmap) {
+        try {
+            val imagesDir = getExternalFilesDir("ProcessedFaces")
+            if (!imagesDir?.exists()!!) {
+                imagesDir.mkdirs()
+            }
+            
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val fileName = "cropped_face_with_eyes_$timestamp.jpg"
-            val file = File(filesDir, fileName)
-            FileOutputStream(file).use { out ->
+            val imageFile = File(imagesDir, "face_$timestamp.jpg")
+
+            FileOutputStream(imageFile).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
             }
-            file.absolutePath
+
+            // Notify media scanner to make the image visible in gallery
+            MediaScannerConnection.scanFile(
+                this,
+                arrayOf(imageFile.absolutePath),
+                arrayOf("image/jpeg"),
+                null
+            )
+
+            Toast.makeText(this, "Image saved to gallery", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             e.printStackTrace()
-            null
+            Toast.makeText(this, "Failed to save image: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -375,30 +390,12 @@ class MainActivity : ComponentActivity() {
                 // Draw eye contours on the cropped face with correct offset
                 val faceWithContours = drawEyeContoursOnBitmap(croppedBitmap, face, paddedLeft, paddedTop)
                 _faceWithEyeContours.value = faceWithContours
-                val savedPath = saveBitmapToInternalStorage(faceWithContours)
-                Toast.makeText(this, "Face cropped, contours drawn, saved at: $savedPath", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Face cropped and contours drawn", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Failed to crop face", Toast.LENGTH_SHORT).show()
             }
         } else {
             Toast.makeText(this, "No face detected to crop", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun saveProcessedImage(bitmap: Bitmap) {
-        try {
-            val imagesDir = getExternalFilesDir("ProcessedFaces")
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val imageFile = File(imagesDir, "face_$timestamp.jpg")
-
-            FileOutputStream(imageFile).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-            }
-
-            Toast.makeText(this, "Image saved to: ${imageFile.absolutePath}", Toast.LENGTH_LONG).show()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Failed to save image", Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -534,7 +531,11 @@ fun CameraScreen(
                             text = "Processed Face with Eye Contours",
                             style = MaterialTheme.typography.titleMedium
                         )
-                        IconButton(onClick = onSaveClick) {
+                        IconButton(
+                            onClick = { 
+                                onSaveClick()
+                            }
+                        ) {
                             Icon(
                                 imageVector = Icons.Rounded.Save,
                                 contentDescription = "Save Image"
