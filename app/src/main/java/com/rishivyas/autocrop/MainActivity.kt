@@ -56,6 +56,8 @@ import java.util.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import android.app.Activity
+import androidx.activity.result.ActivityResultLauncher
 
 class MainActivity : ComponentActivity() {
     private var currentPhotoPath: String? = null
@@ -122,6 +124,149 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private lateinit var pickImageLauncher: ActivityResultLauncher<Intent>
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        // Register gallery picker launcher
+        pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val uri = result.data?.data
+                if (uri != null) {
+                    val bitmap = decodeUriToBitmap(uri)
+                    if (bitmap != null) {
+                        processBitmapFromGallery(bitmap)
+                    } else {
+                        Toast.makeText(this, "Failed to decode image", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
+        setContent {
+            AutoCropTheme {
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    CameraScreen(
+                        capturedImage = _capturedImage.value,
+                        detectedFaces = _detectedFaces.value,
+                        croppedFace = _croppedFace.value,
+                        faceWithEyeContours = _faceWithEyeContours.value,
+                        onCaptureClick = { checkCameraPermissionAndLaunch() },
+                        onCropClick = { cropDetectedFace() },
+                        onSaveClick = { _faceWithEyeContours.value?.let { saveBitmapToInternalStorage(it) } },
+                        onPickGalleryClick = { openGallery() },
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun checkCameraPermissionAndLaunch() {
+        when {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                launchCamera()
+            }
+            else -> {
+                requestPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
+            }
+        }
+    }
+
+    private fun launchCamera() {
+        val photoFile = createImageFile()
+        photoFile?.let { file ->
+            photoUri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                file
+            )
+            val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            takePictureLauncher.launch(takePictureIntent)
+        }
+    }
+
+    private fun createImageFile(): File? {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val storageDir = getExternalFilesDir("Pictures")
+        return try {
+            File.createTempFile(
+                "JPEG_${timeStamp}_",
+                ".jpg",
+                storageDir
+            ).apply {
+                currentPhotoPath = absolutePath
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun openGallery() {
+        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        pickImageLauncher.launch(intent)
+    }
+
+    private fun decodeUriToBitmap(uri: Uri): Bitmap? {
+        return try {
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun processBitmapFromGallery(bitmap: Bitmap) {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        faceDetector.process(image)
+            .addOnSuccessListener { faces ->
+                if (faces.isNotEmpty()) {
+                    val face = faces[0]
+                    val boundingBox = face.boundingBox
+                    val left = boundingBox.left.coerceIn(0, bitmap.width)
+                    val top = boundingBox.top.coerceIn(0, bitmap.height)
+                    val right = boundingBox.right.coerceIn(0, bitmap.width)
+                    val bottom = boundingBox.bottom.coerceIn(0, bitmap.height)
+                    val padding = (boundingBox.width() * 0.2f).toInt()
+                    val paddedLeft = (left - padding).coerceIn(0, bitmap.width)
+                    val paddedTop = (top - padding).coerceIn(0, bitmap.height)
+                    val paddedRight = (right + padding).coerceIn(0, bitmap.width)
+                    val paddedBottom = (bottom + padding).coerceIn(0, bitmap.height)
+                    val croppedBitmap = Bitmap.createBitmap(
+                        bitmap,
+                        paddedLeft,
+                        paddedTop,
+                        paddedRight - paddedLeft,
+                        paddedBottom - paddedTop
+                    )
+                    _croppedFace.value = croppedBitmap
+                    if (croppedBitmap != null) {
+                        val faceWithContours = drawEyeContoursOnBitmap(croppedBitmap, face, paddedLeft, paddedTop)
+                        _faceWithEyeContours.value = faceWithContours
+                        Toast.makeText(this, "Face detected, cropped, and contours drawn from gallery image", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "Failed to crop face from gallery image", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this, "No face detected in gallery image", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Face detection failed for gallery image", Toast.LENGTH_SHORT).show()
+            }
+    }
+
     private fun detectFaces(bitmap: Bitmap) {
         val image = InputImage.fromBitmap(bitmap, 0)
         faceDetector.process(image)
@@ -179,6 +324,21 @@ class MainActivity : ComponentActivity() {
         return mutableBitmap
     }
 
+    private fun saveBitmapToInternalStorage(bitmap: Bitmap): String? {
+        return try {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val fileName = "cropped_face_with_eyes_$timestamp.jpg"
+            val file = File(filesDir, fileName)
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+            }
+            file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     private fun cropDetectedFace() {
         val bitmap = _capturedImage.value
         val faces = _detectedFaces.value
@@ -215,7 +375,8 @@ class MainActivity : ComponentActivity() {
                 // Draw eye contours on the cropped face with correct offset
                 val faceWithContours = drawEyeContoursOnBitmap(croppedBitmap, face, paddedLeft, paddedTop)
                 _faceWithEyeContours.value = faceWithContours
-                Toast.makeText(this, "Face cropped and contours drawn", Toast.LENGTH_SHORT).show()
+                val savedPath = saveBitmapToInternalStorage(faceWithContours)
+                Toast.makeText(this, "Face cropped, contours drawn, saved at: $savedPath", Toast.LENGTH_LONG).show()
             } else {
                 Toast.makeText(this, "Failed to crop face", Toast.LENGTH_SHORT).show()
             }
@@ -240,74 +401,6 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Failed to save image", Toast.LENGTH_SHORT).show()
         }
     }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            AutoCropTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    CameraScreen(
-                        capturedImage = _capturedImage.value,
-                        detectedFaces = _detectedFaces.value,
-                        croppedFace = _croppedFace.value,
-                        faceWithEyeContours = _faceWithEyeContours.value,
-                        onCaptureClick = { checkCameraPermissionAndLaunch() },
-                        onCropClick = { cropDetectedFace() },
-                        onSaveClick = { _faceWithEyeContours.value?.let { saveProcessedImage(it) } },
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
-            }
-        }
-    }
-
-    private fun checkCameraPermissionAndLaunch() {
-        when {
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED -> {
-                launchCamera()
-            }
-            else -> {
-                requestPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
-            }
-        }
-    }
-
-    private fun launchCamera() {
-        val photoFile = createImageFile()
-        photoFile?.let { file ->
-            photoUri = FileProvider.getUriForFile(
-                this,
-                "${packageName}.fileprovider",
-                file
-            )
-            val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
-                putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            takePictureLauncher.launch(takePictureIntent)
-        }
-    }
-
-    private fun createImageFile(): File? {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val storageDir = getExternalFilesDir("Pictures")
-        return try {
-            File.createTempFile(
-                "JPEG_${timeStamp}_",
-                ".jpg",
-                storageDir
-            ).apply {
-                currentPhotoPath = absolutePath
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
 }
 
 @Composable
@@ -319,6 +412,7 @@ fun CameraScreen(
     onCaptureClick: () -> Unit,
     onCropClick: () -> Unit,
     onSaveClick: () -> Unit,
+    onPickGalleryClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -349,6 +443,13 @@ fun CameraScreen(
                 ) {
                     Text("Crop Face")
                 }
+            }
+
+            Button(
+                onClick = onPickGalleryClick,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Pick from Gallery")
             }
         }
 
@@ -510,7 +611,8 @@ fun CameraScreenPreview() {
             faceWithEyeContours = null,
             onCaptureClick = {},
             onCropClick = {},
-            onSaveClick = {}
+            onSaveClick = {},
+            onPickGalleryClick = {}
         )
     }
 }
